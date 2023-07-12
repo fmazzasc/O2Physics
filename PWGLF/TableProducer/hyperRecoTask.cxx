@@ -304,7 +304,6 @@ struct hyperRecoTask {
       auto& hePropTrack = hypCand.isMatter ? fitter.getTrack(0) : fitter.getTrack(1);
       auto& piPropTrack = hypCand.isMatter ? fitter.getTrack(1) : fitter.getTrack(0);
 
-
       hePropTrack.getPxPyPzGlo(hypCand.momHe3);
       piPropTrack.getPxPyPzGlo(hypCand.momPi);
 
@@ -486,7 +485,7 @@ struct hyperRecoTask {
     }
 
     for (auto& hypCand : hyperCandidates) {
-      outputDataTable(hypCand.isMatter, 
+      outputDataTable(hypCand.isMatter,
                       hypCand.recoPtHe3(), hypCand.recoPhiHe3(), hypCand.recoEtaHe3(),
                       hypCand.recoPtPi(), hypCand.recoPhiPi(), hypCand.recoEtaPi(),
                       hypCand.primVtx[0], hypCand.primVtx[1], hypCand.primVtx[2],
@@ -528,7 +527,7 @@ struct hyperRecoTask {
       if (!hypCand.isSignal && mcSignalOnly)
         continue;
       int chargeFactor = -1 + 2 * (hypCand.pdgCode > 0);
-      outputMCTable(hypCand.isMatter, 
+      outputMCTable(hypCand.isMatter,
                     hypCand.recoPtHe3(), hypCand.recoPhiHe3(), hypCand.recoEtaHe3(),
                     hypCand.recoPtPi(), hypCand.recoPhiPi(), hypCand.recoEtaPi(),
                     hypCand.primVtx[0], hypCand.primVtx[1], hypCand.primVtx[2],
