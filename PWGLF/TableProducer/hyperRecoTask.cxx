@@ -216,8 +216,6 @@ struct hyperRecoTask {
     hCentFT0A = qaRegistry.add<TH1>("hCentFT0A", ";Centrality (%); ", HistType::kTH1D, {centAxis});
     hCentFT0M = qaRegistry.add<TH1>("hCentFT0M", ";Centrality (%); ", HistType::kTH1D, {centAxis});
     hCentFV0A = qaRegistry.add<TH1>("hCentFV0A", ";Centrality (%); ", HistType::kTH1D, {centAxis});
-
-
   }
 
   void initCCDB(aod::BCsWithTimestamps::iterator const& bc)
