@@ -9,7 +9,7 @@
 // granted to it by virtue of its status as an Intergovernmental Organization
 // or submit itself to any jurisdiction.
 //
-// Build hypertriton candidates from V0s and tracks
+// Search for hypernuclei kink decay topology
 // ==============================================================================
 
 #include <array>
@@ -83,21 +83,22 @@ struct kinkCandidate {
   int tritTrackID;
   bool isMatter = false;
 
-  std::array<float, 3> momHyp = {0, 0, 0};
-  std::array<float, 3> momTrit = {0, 0, 0};
-  std::array<float, 3> primVtx = {0, 0, 0};
-  std::array<float, 3> decVtx = {0, 0, 0};
+  std::array<float, 3> momHyp = {-999, -999, -999};
+  std::array<float, 3> momTrit = {-999, -999, -999};
+  std::array<float, 3> primVtx = {-999, -999, -999};
+  std::array<float, 3> decVtx = {-999, -999, -999};
 
-  float dcaKinkTopo = -10;
-  float nSigmaTPCTrit = -10;
+  float dcaKinkTopo = -999;
+  float nSigmaTPCTrit = -999;
   float nSigmaTOFTrit = -999;
-  float tritDCAXY = -10;
-  float hypDCAXY = -10;
-  float kinkAngle = -10;
+  float tritDCAXY = -999;
+  float hypDCAXY = -999;
+  float kinkAngle = -999;
 
-  float momTritTPC = -10.f;
+  float momTritTPC = -999.f;
   uint16_t tpcSignalTrit = 0u;
   uint8_t nTPCClustersTrit = 0u;
+  uint8_t trackingPIDTriton = 0u; // flags for triton PID in tracking
 
   uint32_t clusterSizeITSHyp = 0u;
   uint32_t clusterSizeITSTrit = 0u;
@@ -108,11 +109,10 @@ struct kinkCandidate {
 
   bool isSignal = false;        // true MC signal
   bool isReco = false;          // true if the candidate is actually reconstructed
+  float itsPt = -999.f;         // pt of the ITS hypertrack even when the topology is not reconstructed, tagged with the MC truth
+  uint16_t mcMask = false;      // to study fake its tracks
   bool survEvSelection = false; // true if the corresponding event passed the event selection
   int pdgCode = 0;              // pdg code of the mother particle
-  bool hasHyperTrack = false;   // true if the hypertriton track exists
-  bool hasTritTrack = false;    // true if the triton track exists
-  uint8_t flags = 0u;           // flags for dughter particles
 };
 
 struct TrackCand {
@@ -129,12 +129,13 @@ struct hyperKinkRecoTask {
 
   // Selection criteria
   Configurable<float> invMassLow{"invMassLow", 2.9, "Lower limit for the invariant mass"};
-  Configurable<float> invMassHigh{"invMassHigh", 3.3, "Upper limit for the invariant mass"};
-  Configurable<float> maxDCAHypToPV{"maxDCAHypToPV", 0.05, "Max DCA of the hypertriton to the PV"};
+  Configurable<float> invMassHigh{"invMassHigh", 15., "Upper limit for the invariant mass"};
+  Configurable<float> maxDCAHypToPV{"maxDCAHypToPV", 0.1, "Max DCA of the hypertriton to the PV"};
   Configurable<float> minDCATritToPV{"minDCATritToPV", 0., "Min DCA of the triton to the PV"};
   Configurable<float> minPtHyp{"minPtHyp", 0.5, "Minimum pT of the hypercandidate"};
   Configurable<float> maxZDiff{"maxZDiff", 20., "Max z difference between the kink daughter and the hypertriton"};
   Configurable<float> maxPhiDiff{"maxPhiDiff", 100, "Max phi difference between the kink daughter and the hypertriton"};
+  Configurable<float> timeMarginNS{"timeMarginNS", 600, "Additional time res tolerance in ns"};
 
   Configurable<float> etaMax{"eta", 1., "eta daughter"};
   Configurable<float> nSigmaTPCCutTrit{"nSigmaTPCTrit", 5, "triton dEdx cut (n sigma)"};
@@ -257,7 +258,7 @@ struct hyperKinkRecoTask {
   bool selectHyperTrack(const T& candidate)
   {
     if (candidate.hasITS() && !candidate.hasTPC() && !candidate.hasTOF() && candidate.itsNCls() < 6 &&
-        candidate.itsNClsInnerBarrel() == 3 && candidate.itsChi2NCl() < 4 && candidate.pt() > minPtHyp) {
+        candidate.itsNClsInnerBarrel() == 3 && candidate.itsChi2NCl() < 36 && candidate.pt() > minPtHyp) {
       return true;
     }
     return false;
@@ -266,14 +267,12 @@ struct hyperKinkRecoTask {
   template <typename T>
   bool selectTritTrack(const T& candidate)
   {
-    if (!candidate.hasTPC() || candidate.hasITS()) {
+    if (!candidate.hasTPC() || !candidate.hasITS()) {
       return false;
     }
-
     float nSigmaTrit = computeNSigmaTrit(candidate);
-
     if (candidate.itsNClsInnerBarrel() == 0 && candidate.itsNCls() < 4 &&
-        candidate.tpcNClsCrossedRows() >= 70 && candidate.itsChi2NCl() < 36.f && candidate.tpcChi2NCl() < 4.f &&
+        candidate.tpcNClsCrossedRows() >= 70 && candidate.tpcChi2NCl() < 4.f &&
         candidate.tpcNClsCrossedRows() > 0.8 * candidate.tpcNClsFindable() && candidate.tpcNClsFound() > 80 && abs(nSigmaTrit) < nSigmaTPCCutTrit) {
       return true;
     }
@@ -294,9 +293,6 @@ struct hyperKinkRecoTask {
     for (const auto& track : tracks) {
       if (track.has_collision()) {
         if (track.collision_as<CollisionsFull>().has_bc()) {
-          if (track.globalIndex() == 2689 || track.globalIndex() == 2175 || track.globalIndex() == 15091 || track.globalIndex() == 15044) {
-            LOG(info) << "BEGINNNING! track index: " << track.globalIndex() << " has BC: " << track.collision_as<CollisionsFull>().bc_as<aod::BCsWithTimestamps>().globalBC();
-          }
           globalBCvector.push_back(track.collision_as<CollisionsFull>().bc_as<aod::BCsWithTimestamps>().globalBC());
         }
       } else {
@@ -305,9 +301,6 @@ struct hyperKinkRecoTask {
             if (!ambTrack.has_bc() || ambTrack.bc_as<aod::BCsWithTimestamps>().size() == 0) {
               globalBCvector.push_back(-1);
               break;
-            }
-            if (track.globalIndex() == 2689 || track.globalIndex() == 2175) {
-              LOG(info) << "BEGINNNING AMBIGUOUS! track index: " << track.globalIndex() << " has BC: " << ambTrack.bc_as<aod::BCsWithTimestamps>().begin().globalBC();
             }
             globalBCvector.push_back(ambTrack.bc_as<aod::BCsWithTimestamps>().begin().globalBC());
             break;
@@ -322,9 +315,9 @@ struct hyperKinkRecoTask {
           selected[index] = 2;
         }
       }
+
       index++;
     }
-
     constexpr auto bOffsetMax = 241; // 6 mus (ITS)
 
     for (const auto& collision : collisions) {
@@ -369,13 +362,13 @@ struct hyperKinkRecoTask {
           thresholdTime = trackTimeRes;
         } else if (TESTBIT(track.flags(), o2::aod::track::TrackTimeResIsRange)) {
           thresholdTime = std::sqrt(sigmaTimeRes2); // + timeMargin;
+          thresholdTime += timeMarginNS;
+
         } else {
           // thresholdTime = nSigmaForTimeCompat * std::sqrt(sigmaTimeRes2); // + timeMargin;
           thresholdTime = 4. * std::sqrt(sigmaTimeRes2); // + timeMargin;
+          thresholdTime += timeMarginNS;
         }
-
-        LOG(info) << "Testing compatibility for track: " << track.globalIndex() << " selected: " << int(selected[index]) << " with collision: " << collIdx << " with delta time: " << deltaTime << " and threshold: " << thresholdTime << " and BC offset: " << bcOffset << " and global BC: " << collBC << " and track BC: " << globalBCvector[track.globalIndex()];
-
 
         if (std::abs(deltaTime) > thresholdTime) {
           continue;
@@ -383,6 +376,7 @@ struct hyperKinkRecoTask {
 
         const auto& tref = tmap.find(track.globalIndex());
         if (tref != tmap.end()) {
+          LOG(debug) << "Track: " << track.globalIndex() << " already processed with other vertex";
           pools[tref->second.second][tref->second.first].vBracket.setMax(static_cast<int>(collIdx)); // this track was already processed with other vertex, account the latter
           continue;
         }
@@ -415,6 +409,8 @@ struct hyperKinkRecoTask {
       const auto& signedTritPool = tritPool[pn];
       for (unsigned i = 0; i < signedTritPool.size(); i++) {
         const auto& t = signedTritPool[i];
+        const auto& track = tracks.iteratorAt(t.Idxtr);
+        LOG(debug) << "Track with index: " << track.globalIndex() << " min bracket: " << t.vBracket.getMin() << " max bracket: " << t.vBracket.getMax() << " and sign: " << track.sign();
         for (int j{t.vBracket.getMin()}; j <= t.vBracket.getMax(); ++j) {
           if (vtxFirstT[j] == -1) {
             vtxFirstT[j] = i;
@@ -425,11 +421,17 @@ struct hyperKinkRecoTask {
       auto& signedHyperPool = hyperPool[pn];
       for (unsigned itp = 0; itp < signedHyperPool.size(); itp++) {
         auto& seedHyper = signedHyperPool[itp];
-        // LOG(info) << "++++++++++++++++++++++++++++++++++++++++++++++++++++++";
-        // LOG(info) << "Processing hyperseed with global index " << seedHyper.Idxtr;
-        int firstKinkID = vtxFirstT[seedHyper.vBracket.getMin()];
+        LOG(debug) << "Processing hyperseed with global index " << seedHyper.Idxtr << ", bracket: " << seedHyper.vBracket.getMin() << " - " << seedHyper.vBracket.getMax() << " and sign: " << tracks.iteratorAt(seedHyper.Idxtr).sign();
+        int firstKinkID = -1;
+        for (int j{seedHyper.vBracket.getMin()}; j <= seedHyper.vBracket.getMax(); ++j) {
+          LOG(debug) << "Checking vtxFirstT at position " << j << " with value " << vtxFirstT[j];
+          if (vtxFirstT[j] != -1) {
+            firstKinkID = vtxFirstT[j];
+            break;
+          }
+        }
+
         if (firstKinkID < 0) {
-          // LOG(debug) << "No partner is found for pos.track " << itp << " out of " << signedHyperPool.size();
           continue;
         }
         const auto& trackHyper = tracks.iteratorAt(seedHyper.Idxtr);
@@ -448,7 +450,7 @@ struct hyperKinkRecoTask {
         gpu::gpustd::array<float, 2> dcaInfoHyp;
         o2::base::Propagator::Instance()->propagateToDCABxByBz({primaryVertex.getX(), primaryVertex.getY(), primaryVertex.getZ()}, trackParCovHyperPV, 2.f, static_cast<o2::base::Propagator::MatCorrType>(cfgMaterialCorrection.value), &dcaInfoHyp);
 
-        if (dcaInfoHyp[0] > maxDCAHypToPV) {
+        if (abs(dcaInfoHyp[0]) > maxDCAHypToPV) {
           continue;
         }
 
@@ -469,7 +471,7 @@ struct hyperKinkRecoTask {
           }
 
           const auto& trackTrit = tracks.iteratorAt(seedTrit.Idxtr);
-          LOG(info) << "Trying to pair a triton track with global index " << seedTrit.Idxtr;
+          LOG(debug) << "Trying to pair a triton track with global index " << seedTrit.Idxtr;
           o2::track::TrackParCov trackParCovTrit = getTrackParCov(trackTrit);
 
           // check if the kink daughter is close to the hypertriton
@@ -483,7 +485,7 @@ struct hyperKinkRecoTask {
           // propagate to PV
           gpu::gpustd::array<float, 2> dcaInfoTrit;
           o2::base::Propagator::Instance()->propagateToDCABxByBz({primaryVertex.getX(), primaryVertex.getY(), primaryVertex.getZ()}, trackParCovTrit, 2.f, static_cast<o2::base::Propagator::MatCorrType>(cfgMaterialCorrection.value), &dcaInfoTrit);
-          if (dcaInfoTrit[0] < minDCATritToPV) {
+          if (abs(dcaInfoTrit[0]) < minDCATritToPV) {
             continue;
           }
 
@@ -507,8 +509,8 @@ struct hyperKinkRecoTask {
 
           kinkCand.decVtx = fitter.getPCACandidatePos();
 
-          // cut on decay radius to 18 cm
-          if (kinkCand.decVtx[0] * kinkCand.decVtx[0] + kinkCand.decVtx[1] * kinkCand.decVtx[1] < 18 * 18) {
+          // cut on decay radius to 17 cm
+          if (kinkCand.decVtx[0] * kinkCand.decVtx[0] + kinkCand.decVtx[1] * kinkCand.decVtx[1] < 17 * 17) {
             continue;
           }
 
@@ -522,6 +524,7 @@ struct hyperKinkRecoTask {
           if (kinkCand.kinkAngle * radToDeg > angleCut) {
             continue;
           }
+
           std::array<float, 3> pi0mom{0.f, 0.f, 0.f};
           for (int i = 0; i < 3; i++) {
             pi0mom[i] = kinkCand.momHyp[i] - kinkCand.momTrit[i];
@@ -529,6 +532,7 @@ struct hyperKinkRecoTask {
           float pi0E = std::sqrt(pi0mom[0] * pi0mom[0] + pi0mom[1] * pi0mom[1] + pi0mom[2] * pi0mom[2] + pi0Mass * pi0Mass);
           float tritE = std::sqrt(pTrit * pTrit + tritonMass * tritonMass);
           float invMass = std::sqrt((pi0E + tritE) * (pi0E + tritE) - pHyp * pHyp);
+
           if (invMass < invMassLow || invMass > invMassHigh) {
             continue;
           }
@@ -545,13 +549,8 @@ struct hyperKinkRecoTask {
           kinkCand.tpcSignalTrit = trackTrit.tpcSignal();
           kinkCand.momTritTPC = trackTrit.tpcInnerParam();
           kinkCand.dcaKinkTopo = std::sqrt(fitter.getChi2AtPCACandidate());
+          kinkCand.trackingPIDTriton = trackTrit.pidForTracking();
           kinkCand.isReco = true;
-          LOG(info) << "----------------------------------";
-          LOG(info) << "mother track id: " << kinkCand.hyperTrackID << " daughter track id: " << kinkCand.tritTrackID;
-          LOG(info) << "mother bracket: " << seedHyper.vBracket.getMin() << " " << seedHyper.vBracket.getMax() << " daughter bracket: " << seedTrit.vBracket.getMin() << " " << seedTrit.vBracket.getMax();
-          LOG(info) << "PV coords: " << primaryVertex.getX() << " " << primaryVertex.getY() << " " << primaryVertex.getZ();
-          LOG(info) << "Decay coords: " << kinkCand.decVtx[0] << " " << kinkCand.decVtx[1] << " " << kinkCand.decVtx[2];
-
           mKinkCandidates.push_back(kinkCand);
         }
       }
@@ -587,8 +586,7 @@ struct hyperKinkRecoTask {
           kinkCand.gDecVtx[i] = secVtx[i] - primVtx[i];
         }
         kinkCand.pdgCode = mcTrackHyper.pdgCode();
-        kinkCand.hasHyperTrack = true;
-        kinkCand.hasTritTrack = true;
+        kinkCand.mcMask = mcLabHyper.mcMask();
         filledMothers.push_back(mcTrackHyper.globalIndex());
       }
     }
@@ -666,7 +664,7 @@ struct hyperKinkRecoTask {
                       kinkCand.isMatter, kinkCand.recoPtHyp(), kinkCand.recoPhiHyp(), kinkCand.recoEtaHyp(),
                       kinkCand.recoPtTrit(), kinkCand.recoPhiTrit(), kinkCand.recoEtaTrit(),
                       kinkCand.hypDCAXY, kinkCand.tritDCAXY, kinkCand.dcaKinkTopo,
-                      kinkCand.clusterSizeITSHyp, kinkCand.clusterSizeITSTrit, 0,
+                      kinkCand.clusterSizeITSHyp, kinkCand.clusterSizeITSTrit, kinkCand.trackingPIDTriton,
                       kinkCand.momTritTPC, kinkCand.tpcSignalTrit, kinkCand.nSigmaTPCTrit, kinkCand.nSigmaTOFTrit);
     }
   }
@@ -692,7 +690,9 @@ struct hyperKinkRecoTask {
     fillMCinfo(trackLabelsMC, particlesMC);
 
     // now we fill only the signal candidates that were not reconstructed
-    int counterFindable = 0;
+    std::vector<int> mcToKinkCandidates;
+    mcToKinkCandidates.resize(particlesMC.size(), -1);
+
     for (auto& mcPart : particlesMC) {
 
       if (std::abs(mcPart.pdgCode()) != hyperPdg)
@@ -703,13 +703,11 @@ struct hyperKinkRecoTask {
       std::array<float, 3> momTrit;
       bool isTritFound = false;
       int hyperMCIndex = mcPart.globalIndex();
-      int tritMCIndex = -1;
       for (auto& mcDaught : mcPart.daughters_as<aod::McParticles>()) {
         if (std::abs(mcDaught.pdgCode()) == tritDauPdg) {
           secVtx = {mcDaught.vx(), mcDaught.vy(), mcDaught.vz()};
           momTrit = {mcDaught.px(), mcDaught.py(), mcDaught.pz()};
           isTritFound = true;
-          tritMCIndex = mcDaught.globalIndex();
           break;
         }
       }
@@ -730,31 +728,22 @@ struct hyperKinkRecoTask {
       kinkCand.hyperTrackID = -1;
       kinkCand.tritTrackID = -1;
       kinkCand.isSignal = true;
-
-      // look for hypertriton or triton tracks
-      for (auto& track : tracks) {
-        auto mcLabel = trackLabelsMC.rawIteratorAt(track.globalIndex());
-        if (mcLabel.has_mcParticle()) {
-          auto mcTrack = mcLabel.mcParticle_as<aod::McParticles>();
-          if (mcTrack.globalIndex() == hyperMCIndex) {
-            kinkCand.hyperTrackID = track.globalIndex();
-            kinkCand.hasHyperTrack = true;
-          }
-          if (mcTrack.globalIndex() == tritMCIndex) {
-            kinkCand.tritTrackID = track.globalIndex();
-            kinkCand.hasTritTrack = true;
-          }
-        }
-      }
-
-      if (kinkCand.hasHyperTrack && kinkCand.hasTritTrack) {
-        counterFindable++;
-        LOG(info) << "----------------------------------";
-        LOG(info) << "Signal candidate pair found with hypertriton track id: " << kinkCand.hyperTrackID << " and triton track id: " << kinkCand.tritTrackID;
-        LOG(info) << "Counter findable: " << counterFindable;
-      }
-
       mKinkCandidates.push_back(kinkCand);
+      mcToKinkCandidates[hyperMCIndex] = mKinkCandidates.size() - 1;
+    }
+
+    // look for hypertriton or triton tracks
+    for (auto& track : tracks) {
+      auto mcLabel = trackLabelsMC.rawIteratorAt(track.globalIndex());
+      if (mcLabel.has_mcParticle()) {
+        auto mcTrack = mcLabel.mcParticle_as<aod::McParticles>();
+        if (mcToKinkCandidates[mcTrack.globalIndex()] < 0 || !track.hasITS()) {
+          continue;
+        }
+        auto& kinkCand = mKinkCandidates[mcToKinkCandidates[mcTrack.globalIndex()]];
+        kinkCand.mcMask = mcLabel.mcMask();
+        kinkCand.itsPt = track.pt();
+      }
     }
 
     for (auto& kinkCand : mKinkCandidates) {
@@ -767,10 +756,11 @@ struct hyperKinkRecoTask {
                     kinkCand.isMatter, kinkCand.recoPtHyp(), kinkCand.recoPhiHyp(), kinkCand.recoEtaHyp(),
                     kinkCand.recoPtTrit(), kinkCand.recoPhiTrit(), kinkCand.recoEtaTrit(),
                     kinkCand.hypDCAXY, kinkCand.tritDCAXY, kinkCand.dcaKinkTopo,
-                    kinkCand.clusterSizeITSHyp, kinkCand.clusterSizeITSTrit, 0,
+                    kinkCand.clusterSizeITSHyp, kinkCand.clusterSizeITSTrit, kinkCand.trackingPIDTriton,
                     kinkCand.momTritTPC, kinkCand.tpcSignalTrit, kinkCand.nSigmaTPCTrit, kinkCand.nSigmaTOFTrit,
                     kinkCand.gDecVtx[0], kinkCand.gDecVtx[1], kinkCand.gDecVtx[2],
-                    kinkCand.genPt() * chargeFactor, kinkCand.isReco, kinkCand.isSignal, kinkCand.genPtTrit());
+                    kinkCand.genPt() * chargeFactor, kinkCand.genPtTrit(),
+                    kinkCand.isReco, kinkCand.isSignal, kinkCand.mcMask, kinkCand.itsPt);
     }
   }
   PROCESS_SWITCH(hyperKinkRecoTask, processMC, "MC analysis", false);
