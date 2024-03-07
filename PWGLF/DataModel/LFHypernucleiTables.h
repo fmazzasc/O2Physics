@@ -158,9 +158,9 @@ DECLARE_SOA_COLUMN(NSigmaTPCTrit, nSigmaTPCTrit, float);    // Number of tpc sig
 DECLARE_SOA_COLUMN(NSigmaTOFTrit, nSigmaTOFTrit, float);    // Number of tof sigmas of the triton kink
 
 // MC additional info
-DECLARE_SOA_COLUMN(GenPtTrit, genPtTrit, float);      // Pt of the triton kink
+DECLARE_SOA_COLUMN(GenPtTrit, genPtTrit, float);   // Pt of the triton kink
 DECLARE_SOA_COLUMN(HyperPtITS, hyperPtITS, float); // Pt of the hypertriton from ITS standalone, hypertriton tagged with MC truth
-DECLARE_SOA_COLUMN(MCMask, mcMask, bool); // bool: true for fake triton
+DECLARE_SOA_COLUMN(MCMask, mcMask, bool);          // bool: true for fake triton
 
 } // namespace hyperkink
 
@@ -184,7 +184,7 @@ DECLARE_SOA_TABLE(MCHypKinkCands, "AOD", "MCHYPKINKCANDS",
                   hyperkink::ITSclusterSizesHyper, hyperkink::ITSclusterSizesTrit, hyperkink::PIDinTrackTrit,
                   hyperkink::TPCmomTrit, hyperkink::TPCsignalTrit, hyperkink::NSigmaTPCTrit, hyperkink::NSigmaTOFTrit,
                   hyperrec::GenXDecVtx, hyperrec::GenYDecVtx, hyperrec::GenZDecVtx,
-                  hyperrec::GenPt, hyperkink::GenPtTrit, 
+                  hyperrec::GenPt, hyperkink::GenPtTrit,
                   hyperrec::IsReco, hyperrec::IsSignal, hyperkink::MCMask, hyperkink::HyperPtITS);
 
 } // namespace o2::aod
