@@ -649,7 +649,7 @@ struct hyperRecoTask {
       hypCand.negTrackID = -1;
       hypCand.isSignal = true;
       outputMCTable(-1, -1, -1,
-                    -1, -1, -1, 
+                    -1, -1, -1,
                     0,
                     -1, -1, -1,
                     -1, -1, -1,
