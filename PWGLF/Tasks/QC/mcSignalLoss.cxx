@@ -41,12 +41,9 @@
 #include "Framework/HistogramRegistry.h"
 #include "Common/Core/PID/TPCPIDResponse.h"
 #include "Common/DataModel/PIDResponse.h"
-
+#include "PWGLF/Utils/inelGt.h"
+#include "Framework/O2DatabasePDGPlugin.h"
 #include "TDatabasePDG.h"
-
-using namespace o2;
-using namespace o2::framework;
-using namespace o2::framework::expressions;
 
 using namespace o2;
 using namespace o2::framework;
@@ -66,6 +63,9 @@ struct mcsignalloss {
   ConfigurableAxis pdgAxis{"pdgAxis", {static_cast<double>(pdgCodes.size()), 0, static_cast<double>(pdgCodes.size())}, "pdg axis binning"};
   HistogramRegistry histos{"histos", {}, OutputObjHandlingPolicy::AnalysisObject};
   std::vector<bool> isRecoCollision;
+  Service<o2::framework::O2DatabasePDG> pdgDB;
+  SliceCache cache;
+  Preslice<aod::McParticles> perMCCollision = o2::aod::mcparticle::mcCollisionId;
 
   float calcDecL(const aod::McParticle& mcPart, aod::McParticles const&)
   {
@@ -106,35 +106,37 @@ struct mcsignalloss {
 
       if (!collision.selection_bit(aod::evsel::kIsTriggerTVX) || !collision.selection_bit(aod::evsel::kNoTimeFrameBorder) || std::abs(collision.posZ()) > 10)
         continue;
-      
+
       histos.fill(HIST("recCollisionVtx"), collision.posZ());
 
       if (collision.has_mcCollision()) {
         isRecoCollision[collision.mcCollisionId()] = true;
       }
     }
-    
+
     for (const auto& mcCollision : mcCollisions) {
-      histos.fill(HIST("mcGenCollisionVtx"), mcCollision.posZ());
-    }
-
-    for (auto& mcPart : particlesMC) {
-
-      if (!mcPart.isPhysicalPrimary() || mcPart.mcCollisionId() < 0) {
+      auto mcParticles_per_coll = particlesMC.sliceBy(perMCCollision, mcCollision.globalIndex());
+      if (!pwglf::isINELgtNmc(mcParticles_per_coll, 0, pdgDB)) {
         continue;
       }
-
-      for (int i = 0; i < pdgCodes.size(); i++) {
-        if (std::abs(mcPart.pdgCode()) == pdgCodes[i]) {
-          bool fillV0s = i > 4;
-          histos.fill(HIST("mcGenAll"), mcPart.pt(), i);
-          if (fillV0s) {
-            histos.fill(HIST("mcGenV0s"), mcPart.pt(), calcDecL(mcPart, particlesMC), i);
-          }
-          if (isRecoCollision[mcPart.mcCollisionId()]) {
-            histos.fill(HIST("mcGenAllRecoColl"), mcPart.pt(), i);
+      
+      histos.fill(HIST("mcGenCollisionVtx"), mcCollision.posZ());
+      for (const auto& mcPart : mcParticles_per_coll) {
+        if (!mcPart.isPhysicalPrimary() || mcPart.mcCollisionId() < 0) {
+          continue;
+        }
+        for (int i = 0; i < pdgCodes.size(); i++) {
+          if (std::abs(mcPart.pdgCode()) == pdgCodes[i]) {
+            bool fillV0s = i > 4;
+            histos.fill(HIST("mcGenAll"), mcPart.pt(), i);
             if (fillV0s) {
-              histos.fill(HIST("mcGenV0sRecoColl"), mcPart.pt(), calcDecL(mcPart, particlesMC), i);
+              histos.fill(HIST("mcGenV0s"), mcPart.pt(), calcDecL(mcPart, particlesMC), i);
+            }
+            if (isRecoCollision[mcPart.mcCollisionId()]) {
+              histos.fill(HIST("mcGenAllRecoColl"), mcPart.pt(), i);
+              if (fillV0s) {
+                histos.fill(HIST("mcGenV0sRecoColl"), mcPart.pt(), calcDecL(mcPart, particlesMC), i);
+              }
             }
           }
         }
