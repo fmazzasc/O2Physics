@@ -487,7 +487,7 @@ struct nucleiSpectra {
   void fillDataInfo(Tcoll const& collision, Ttrks const& tracks)
   {
     o2::pid::tof::Beta<typename Ttrks ::iterator> responseBeta;
-    auto bc = collision.template bc_as<aod:sen:BCsWithTimestamps>();
+    auto bc = collision.template bc_as < aod : sen : BCsWithTimestamps > ();
     initCCDB(bc);
     if (cfgSkimmedProcessing) {
       zorro.isSelected(collision.template bc_as<aod::BCsWithTimestamps>().globalBC()); /// Just let Zorro do the accounting
