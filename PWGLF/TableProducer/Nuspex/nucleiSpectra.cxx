@@ -487,8 +487,11 @@ struct nucleiSpectra {
   void fillDataInfo(Tcoll const& collision, Ttrks const& tracks)
   {
     o2::pid::tof::Beta<typename Ttrks ::iterator> responseBeta;
-    auto bc = collision.template bc_as<aod::BCsWithTimestamps>();
+    auto bc = collision.template bc_as<aod:sen:BCsWithTimestamps>();
     initCCDB(bc);
+    if (cfgSkimmedProcessing) {
+      zorro.isSelected(collision.template bc_as<aod::BCsWithTimestamps>().globalBC()); /// Just let Zorro do the accounting
+    }
     gRandom->SetSeed(bc.timestamp());
 
     spectra.fill(HIST("hRecVtxZData"), collision.posZ());
@@ -703,9 +706,6 @@ struct nucleiSpectra {
     nuclei::candidates.clear();
     if (!eventSelection(collision)) {
       return;
-    }
-    if (cfgSkimmedProcessing) {
-      zorro.isSelected(collision.bc_as<aod::BCsWithTimestamps>().globalBC()); /// Just let Zorro do the accounting
     }
 
     fillDataInfo(collision, tracks);
